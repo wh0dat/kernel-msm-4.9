@@ -26,7 +26,6 @@ static void himax_press_powerkey(void)
     input_sync(private_ts->input_dev);
 }
 #endif
-static uint8_t	NOISEMAX;
 
 #if 0
 static int hx_test_data_pop_out(char *rslt_buf, char *filepath)
