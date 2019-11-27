@@ -1,4 +1,4 @@
-/* Copyright (c) 2012-2018, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2012-2019, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -1765,12 +1765,15 @@ static int qpnp_adc_tm_set_trip_temp(void *data, int low_temp, int high_temp)
 		}
 		adc_tm->low_thr = tm_config.high_thr_voltage;
 
-		rc = qpnp_adc_tm_activate_trip_type(adc_tm,
-				ADC_TM_TRIP_HIGH_WARM,
-				THERMAL_TRIP_ACTIVATION_ENABLED);
-		if (rc) {
-			pr_err("adc-tm warm activation failed\n");
-			return rc;
+		/* If there is a pending workqueue, don't enable */
+		if (!(adc_tm->low_thr_triggered)) {
+			rc = qpnp_adc_tm_activate_trip_type(adc_tm,
+					ADC_TM_TRIP_HIGH_WARM,
+					THERMAL_TRIP_ACTIVATION_ENABLED);
+			if (rc) {
+				pr_err("adc-tm warm activation failed\n");
+				return rc;
+			}
 		}
 	} else {
 		rc = qpnp_adc_tm_activate_trip_type(adc_tm,
@@ -1798,12 +1801,15 @@ static int qpnp_adc_tm_set_trip_temp(void *data, int low_temp, int high_temp)
 		}
 		adc_tm->high_thr = tm_config.low_thr_voltage;
 
-		rc = qpnp_adc_tm_activate_trip_type(adc_tm,
-				ADC_TM_TRIP_LOW_COOL,
-				THERMAL_TRIP_ACTIVATION_ENABLED);
-		if (rc) {
-			pr_err("adc-tm cool activation failed\n");
-			return rc;
+		/* If there is a pending workqueue, don't enable */
+		if (!(adc_tm->high_thr_triggered)) {
+			rc = qpnp_adc_tm_activate_trip_type(adc_tm,
+					ADC_TM_TRIP_LOW_COOL,
+					THERMAL_TRIP_ACTIVATION_ENABLED);
+			if (rc) {
+				pr_err("adc-tm cool activation failed\n");
+				return rc;
+			}
 		}
 	} else {
 		rc = qpnp_adc_tm_activate_trip_type(adc_tm,
@@ -3239,7 +3245,7 @@ static int qpnp_adc_tm_probe(struct platform_device *pdev)
 	} else {
 		rc = devm_request_irq(&pdev->dev, chip->adc->adc_irq_eoc,
 				qpnp_adc_tm_rc_thr_isr,
-			IRQF_TRIGGER_HIGH, "qpnp_adc_tm_interrupt", chip);
+			IRQF_TRIGGER_RISING, "qpnp_adc_tm_interrupt", chip);
 		if (rc)
 			dev_err(&pdev->dev, "failed to request adc irq\n");
 		else

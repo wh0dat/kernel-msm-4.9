@@ -94,6 +94,7 @@ struct __thermal_zone {
 	enum thermal_device_mode mode;
 	int passive_delay;
 	int polling_delay;
+	int alarm_temperature;
 	int slope;
 	int offset;
 	struct thermal_zone_device *tzd;
@@ -396,10 +397,13 @@ static int of_thermal_set_mode(struct thermal_zone_device *tz,
 
 	mutex_lock(&tz->lock);
 
-	if (mode == THERMAL_DEVICE_ENABLED)
+	if (mode == THERMAL_DEVICE_ENABLED) {
 		tz->polling_delay = data->polling_delay;
-	else
+		tz->passive_delay = data->passive_delay;
+	} else {
 		tz->polling_delay = 0;
+		tz->passive_delay = 0;
+	}
 
 	mutex_unlock(&tz->lock);
 
@@ -1222,6 +1226,13 @@ __init *thermal_of_build_thermal_zone(struct device_node *np)
 	}
 	tz->polling_delay = prop;
 
+	ret = of_property_read_u32(np, "thermal-user-alarm", &prop);
+	if (ret < 0) {
+		pr_err("missing thermal-user-alarm property\n");
+		prop = 0;
+	}
+	tz->alarm_temperature = prop;
+
 	tz->default_disable = of_property_read_bool(np,
 					"disable-thermal-zone");
 	/*
@@ -1408,6 +1419,7 @@ int __init of_parse_thermal_zones(void)
 			/* attempting to build remaining zones still */
 			continue;
 		}
+		zone->alarm_temperature = tz->alarm_temperature;
 		tz->tzd = zone;
 	}
 	of_node_put(np);
