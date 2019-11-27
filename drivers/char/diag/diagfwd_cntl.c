@@ -27,6 +27,8 @@
 
 #define FEATURE_SUPPORTED(x)	((feature_mask << (i * 8)) & (1 << x))
 
+uint16_t md_support;
+
 /* tracks which peripheral is undergoing SSR */
 static uint16_t reg_dirty;
 static uint8_t diag_id = DIAG_ID_APPS;
@@ -122,6 +124,12 @@ void diag_notify_md_client(uint8_t peripheral, int data)
 	struct siginfo info;
 	struct pid *pid_struct;
 	struct task_struct *result;
+
+	if (data == DIAG_STATUS_OPEN) {
+		md_support |= PERIPHERAL_MASK(peripheral);
+	} else if (data == DIAG_STATUS_CLOSED) {
+		md_support ^= PERIPHERAL_MASK(peripheral);
+	}
 
 	if (peripheral > NUM_PERIPHERALS) {
 		DIAG_LOG(DIAG_DEBUG_PERIPHERALS,
@@ -619,7 +627,12 @@ static int update_msg_mask_tbl_entry(struct diag_msg_mask_t *mask,
 	}
 	if (range->ssid_last >= mask->ssid_last) {
 		temp_range = range->ssid_last - mask->ssid_first + 1;
-		mask->ssid_last = range->ssid_last;
+		if (temp_range > MAX_SSID_PER_RANGE) {
+			temp_range = MAX_SSID_PER_RANGE;
+			mask->ssid_last = mask->ssid_first + temp_range - 1;
+		} else
+			mask->ssid_last = range->ssid_last;
+		mask->ssid_last_tools = mask->ssid_last;
 		mask->range = temp_range;
 	}
 
@@ -862,7 +875,7 @@ int diag_add_diag_id_to_list(uint8_t diag_id, char *process_name,
 	new_item->diag_id = diag_id;
 	new_item->pd_val = pd_val;
 	new_item->peripheral = peripheral;
-	strlcpy(new_item->process_name, process_name, strlen(process_name) + 1);
+	strscpy(new_item->process_name, process_name, sizeof(new_item->process_name));
 	INIT_LIST_HEAD(&new_item->link);
 	mutex_lock(&driver->diag_id_mutex);
 	list_add_tail(&new_item->link, &driver->diag_id_list);
@@ -963,8 +976,8 @@ static void process_diagid(uint8_t *buf, uint32_t len,
 
 	ctrl_pkt.pkt_id = DIAG_CTRL_MSG_DIAGID;
 	ctrl_pkt.version = 1;
-	strlcpy((char *)&ctrl_pkt.process_name, process_name,
-		strlen(process_name) + 1);
+	strscpy((char *)&ctrl_pkt.process_name, process_name,
+		sizeof((char *)&ctrl_pkt.process_name));
 	ctrl_pkt.len = sizeof(ctrl_pkt.diag_id) + sizeof(ctrl_pkt.version) +
 			strlen(process_name) + 1;
 	err = diagfwd_write(peripheral, TYPE_CNTL, &ctrl_pkt, ctrl_pkt.len +
