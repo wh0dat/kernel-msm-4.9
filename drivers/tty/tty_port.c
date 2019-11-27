@@ -369,7 +369,7 @@ int tty_port_block_til_ready(struct tty_port *port,
 		tty_port_set_active(port, 1);
 		return 0;
 	}
-	if (filp->f_flags & O_NONBLOCK) {
+	if (!filp || filp->f_flags & O_NONBLOCK) {
 		/* Indicate we are open */
 		if (C_BAUD(tty))
 			tty_port_raise_dtr_rts(port);
@@ -458,7 +458,7 @@ int tty_port_close_start(struct tty_port *port,
 {
 	unsigned long flags;
 
-	if (tty_hung_up_p(filp))
+	if (filp && tty_hung_up_p(filp))
 		return 0;
 
 	spin_lock_irqsave(&port->lock, flags);
@@ -531,7 +531,8 @@ void tty_port_close(struct tty_port *port, struct tty_struct *tty,
 	if (tty_port_close_start(port, tty, filp) == 0)
 		return;
 	tty_port_shutdown(port, tty);
-	set_bit(TTY_IO_ERROR, &tty->flags);
+	if (!port->console)
+		set_bit(TTY_IO_ERROR, &tty->flags);
 	tty_port_close_end(port, tty);
 	tty_port_tty_set(port, NULL);
 }
