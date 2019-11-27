@@ -2716,7 +2716,11 @@ int smblib_get_prop_die_health(struct smb_charger *chg,
 
 #define SDP_CURRENT_UA			500000
 #define CDP_CURRENT_UA			1500000
+#ifdef CONFIG_DCP_2A_SUPPORT
+#define DCP_CURRENT_UA			1800000
+#else
 #define DCP_CURRENT_UA			1500000
+#endif
 #define HVDCP_CURRENT_UA		3000000
 #define TYPEC_DEFAULT_CURRENT_UA	900000
 #define TYPEC_MEDIUM_CURRENT_UA		1500000
@@ -2888,6 +2892,7 @@ static int __smblib_set_prop_pd_active(struct smb_charger *chg, bool pd_active)
 
 	chg->pd_active = pd_active;
 	if (chg->pd_active) {
+		chg->real_charger_type = POWER_SUPPLY_TYPE_USB_PD;
 		vote(chg->apsd_disable_votable, PD_VOTER, true, 0);
 		vote(chg->pd_allowed_votable, PD_VOTER, true, 0);
 		vote(chg->usb_irq_enable_votable, PD_VOTER, true, 0);
