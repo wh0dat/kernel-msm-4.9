@@ -448,7 +448,11 @@ static int cmdq_enable(struct mmc_host *mmc)
 	cmdq_writel(cq_host, mmc->card->rca, CQSSC2);
 
 	/* send QSR at lesser intervals than the default */
-	cmdq_writel(cq_host, SEND_QSR_INTERVAL, CQSSC1);
+	if ((mmc->card->cid.oemid == 0x14E) && (mmc->card->cid.manfid == 0x13)) {
+		cmdq_writel(cq_host, 0x70028, CQSSC1);
+	} else
+		cmdq_writel(cq_host, SEND_QSR_INTERVAL, CQSSC1);
+
 
 	/* enable bkops exception indication */
 	if (mmc_card_configured_manual_bkops(mmc->card) &&
@@ -911,11 +915,13 @@ static void cmdq_finish_data(struct mmc_host *mmc, unsigned int tag)
 
 	cmdq_runtime_pm_put(cq_host);
 
-	if (cq_host->ops->crypto_cfg_end) {
-		err = cq_host->ops->crypto_cfg_end(mmc, mrq);
-		if (err) {
-			pr_err("%s: failed to end ice config: err %d tag %d\n",
-					mmc_hostname(mmc), err, tag);
+	if (!(mrq->cmdq_req->cmdq_req_flags & DCMD)) {
+		if (cq_host->ops->crypto_cfg_end) {
+			err = cq_host->ops->crypto_cfg_end(mmc, mrq);
+			if (err) {
+				pr_err("%s: failed to end ice config: err %d tag %d\n",
+						mmc_hostname(mmc), err, tag);
+			}
 		}
 	}
 	if (!(cq_host->caps & CMDQ_CAP_CRYPTO_SUPPORT) &&

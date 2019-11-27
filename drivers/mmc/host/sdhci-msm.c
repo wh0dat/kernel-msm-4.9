@@ -115,6 +115,8 @@
 #define CORE_1_8V_SUPPORT		(1 << 26)
 #define CORE_SYS_BUS_SUPPORT_64_BIT	BIT(28)
 
+#define CORE_VENDOR_SPEC_CAPABILITIES1 0x120
+
 #define CORE_CSR_CDC_CTLR_CFG0		0x130
 #define CORE_SW_TRIG_FULL_CALIB		(1 << 16)
 #define CORE_HW_AUTOCAL_ENA		(1 << 17)
@@ -1992,6 +1994,9 @@ struct sdhci_msm_pltfm_data *sdhci_msm_populate_pdata(struct device *dev,
 	if (gpio_is_valid(pdata->status_gpio) && !(flags & OF_GPIO_ACTIVE_LOW))
 		pdata->caps2 |= MMC_CAP2_CD_ACTIVE_HIGH;
 
+	if (of_get_property(np, "qcom,cd-wakeup", NULL))
+		msm_host->mmc->slot.cd_wakeup = true;
+
 	of_property_read_u32(np, "qcom,bus-width", &bus_width);
 	if (bus_width == 8)
 		pdata->mmc_bus_width = MMC_CAP_8_BIT_DATA;
@@ -2091,6 +2096,9 @@ struct sdhci_msm_pltfm_data *sdhci_msm_populate_pdata(struct device *dev,
 		goto out;
 	}
 
+	pdata->clk_scale_disabled = of_property_read_bool(np,
+		"qcom,clk-scale-disabled");
+
 	len = of_property_count_strings(np, "qcom,bus-speed-mode");
 
 	for (i = 0; i < len; i++) {
@@ -2115,7 +2123,26 @@ struct sdhci_msm_pltfm_data *sdhci_msm_populate_pdata(struct device *dev,
 		else if (!strncmp(name, "DDR_1p2v", sizeof("DDR_1p2v")))
 			pdata->caps |= MMC_CAP_1_2V_DDR
 						| MMC_CAP_UHS_DDR50;
+		else if (!strncmp(name, "SDR104_1p8v", sizeof("SDR104_1p8v")))
+			pdata->caps |= MMC_CAP_1_8V_DDR
+						| MMC_CAP_UHS_SDR104;
+		else if (!strncmp(name, "SDR50_1p8v", sizeof("SDR50_1p8v")))
+			pdata->caps |= MMC_CAP_1_8V_DDR
+						| MMC_CAP_UHS_SDR50;
+		else if (!strncmp(name, "SDR25_1p8v", sizeof("SDR25_1p8v")))
+			pdata->caps |= MMC_CAP_1_8V_DDR
+						| MMC_CAP_UHS_SDR25;
+		else if (!strncmp(name, "SDR12_1p8v", sizeof("SDR12_1p8v")))
+			pdata->caps |= MMC_CAP_1_8V_DDR
+						| MMC_CAP_UHS_SDR12;
 	}
+
+	if (pdata->caps & MMC_CAP_UHS_SDR104)
+		pdata->caps |= MMC_CAP_UHS_SDR50;
+	if (pdata->caps & MMC_CAP_UHS_SDR50)
+		pdata->caps |= MMC_CAP_UHS_SDR25;
+	if (pdata->caps & MMC_CAP_UHS_SDR25)
+		pdata->caps |= MMC_CAP_UHS_SDR12;
 
 	if (of_get_property(np, "qcom,nonremovable", NULL))
 		pdata->nonremovable = true;
@@ -4676,6 +4703,7 @@ static int sdhci_msm_probe(struct platform_device *pdev)
 	void __iomem *tlmm_mem;
 	unsigned long flags;
 	bool force_probe;
+	u32 sdhci_caps;
 
 	pr_debug("%s: Enter %s\n", dev_name(&pdev->dev), __func__);
 	msm_host = devm_kzalloc(&pdev->dev, sizeof(struct sdhci_msm_host),
@@ -5051,7 +5079,11 @@ static int sdhci_msm_probe(struct platform_device *pdev)
 	msm_host->mmc->caps2 |= msm_host->pdata->caps2;
 	msm_host->mmc->caps2 |= MMC_CAP2_BOOTPART_NOACC;
 	msm_host->mmc->caps2 |= MMC_CAP2_HS400_POST_TUNING;
-	msm_host->mmc->caps2 |= MMC_CAP2_CLK_SCALE;
+	if (!msm_host->pdata->clk_scale_disabled)
+		msm_host->mmc->caps2 |= MMC_CAP2_CLK_SCALE;
+	else
+		pr_warn("%s: %s: clock scaling disabled\n",
+			__func__, dev_name(&pdev->dev));
 	msm_host->mmc->caps2 |= MMC_CAP2_SANITIZE;
 	msm_host->mmc->caps2 |= MMC_CAP2_MAX_DISCARD_SIZE;
 	msm_host->mmc->caps2 |= MMC_CAP2_SLEEP_AWAKE;
@@ -5064,6 +5096,24 @@ static int sdhci_msm_probe(struct platform_device *pdev)
 		msm_host->mmc->caps2 |= MMC_CAP2_NONHOTPLUG;
 
 	msm_host->mmc->sdr104_wa = msm_host->pdata->sdr104_wa;
+        if (mmc_host_uhs(msm_host->mmc)) {
+                sdhci_caps = readl_relaxed(host->ioaddr + SDHCI_CAPABILITIES_1);
+
+		if ((sdhci_caps & SDHCI_SUPPORT_SDR104) &&
+                        !(host->mmc->caps & MMC_CAP_UHS_SDR104))
+                        sdhci_caps &= ~SDHCI_SUPPORT_SDR104;
+
+		if ((sdhci_caps & SDHCI_SUPPORT_DDR50) &&
+                        !(host->mmc->caps & MMC_CAP_UHS_DDR50))
+                        sdhci_caps &= ~SDHCI_SUPPORT_DDR50;
+
+		if ((sdhci_caps & SDHCI_SUPPORT_SDR50) &&
+                        !(host->mmc->caps & MMC_CAP_UHS_SDR50))
+                        sdhci_caps &= ~SDHCI_SUPPORT_SDR50;
+
+                sdhci_caps |= ((host_version & 0xFF) << 24);
+                sdhci_writel(host, sdhci_caps, CORE_VENDOR_SPEC_CAPABILITIES1);
+        }
 
 	/* Initialize ICE if present */
 	if (msm_host->ice.pdev) {
@@ -5425,14 +5475,17 @@ static int sdhci_msm_suspend(struct device *dev)
 	struct sdhci_host *host = dev_get_drvdata(dev);
 	struct sdhci_pltfm_host *pltfm_host = sdhci_priv(host);
 	struct sdhci_msm_host *msm_host = pltfm_host->priv;
+	struct mmc_host *mmc = host->mmc;
 	int ret = 0;
 	int sdio_cfg = 0;
 	ktime_t start = ktime_get();
 
 	if (gpio_is_valid(msm_host->pdata->status_gpio) &&
-		(msm_host->mmc->slot.cd_irq >= 0))
-			disable_irq(msm_host->mmc->slot.cd_irq);
-
+			(msm_host->mmc->slot.cd_irq >= 0)) {
+		disable_irq(msm_host->mmc->slot.cd_irq);
+		if (msm_host->mmc->slot.cd_wakeup)
+			enable_irq_wake(msm_host->mmc->slot.cd_irq);
+	}
 	if (pm_runtime_suspended(dev)) {
 		pr_debug("%s: %s: already runtime suspended\n",
 		mmc_hostname(host->mmc), __func__);
@@ -5440,6 +5493,7 @@ static int sdhci_msm_suspend(struct device *dev)
 	}
 	ret = sdhci_msm_runtime_suspend(dev);
 out:
+	cancel_delayed_work_sync(&mmc->clk_gate_work);
 	sdhci_msm_disable_controller_clock(host);
 	if (host->mmc->card && mmc_card_sdio(host->mmc->card)) {
 		sdio_cfg = sdhci_msm_cfg_sdio_wakeup(host, true);
@@ -5462,8 +5516,11 @@ static int sdhci_msm_resume(struct device *dev)
 	ktime_t start = ktime_get();
 
 	if (gpio_is_valid(msm_host->pdata->status_gpio) &&
-		(msm_host->mmc->slot.cd_irq >= 0))
-			enable_irq(msm_host->mmc->slot.cd_irq);
+			(msm_host->mmc->slot.cd_irq >= 0)) {
+		enable_irq(msm_host->mmc->slot.cd_irq);
+		if (msm_host->mmc->slot.cd_wakeup)
+			disable_irq_wake(msm_host->mmc->slot.cd_irq);
+	}
 
 	if (pm_runtime_suspended(dev)) {
 		pr_debug("%s: %s: runtime suspended, defer system resume\n",
@@ -5509,7 +5566,7 @@ static int sdhci_msm_suspend_noirq(struct device *dev)
 }
 
 static const struct dev_pm_ops sdhci_msm_pmops = {
-	SET_LATE_SYSTEM_SLEEP_PM_OPS(sdhci_msm_suspend, sdhci_msm_resume)
+	SET_SYSTEM_SLEEP_PM_OPS(sdhci_msm_suspend, sdhci_msm_resume)
 	SET_RUNTIME_PM_OPS(sdhci_msm_runtime_suspend, sdhci_msm_runtime_resume,
 			   NULL)
 	.suspend_noirq = sdhci_msm_suspend_noirq,
