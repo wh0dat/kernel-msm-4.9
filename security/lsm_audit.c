@@ -220,8 +220,12 @@ static void dump_common_audit_data(struct audit_buffer *ab,
 	 */
 	BUILD_BUG_ON(sizeof(a->u) > sizeof(void *)*2);
 
+
 	audit_log_format(ab, " pid=%d comm=", task_tgid_nr(current));
 	audit_log_untrustedstring(ab, memcpy(comm, current->comm, sizeof(comm)));
+
+	audit_log_format(ab, " uid=%u",
+		from_kuid(&init_user_ns, current_cred()->uid));
 
 	switch (a->type) {
 	case LSM_AUDIT_DATA_NONE:
@@ -313,6 +317,10 @@ static void dump_common_audit_data(struct audit_buffer *ab,
 				audit_log_format(ab, " opid=%d ocomm=", pid);
 				audit_log_untrustedstring(ab,
 				    memcpy(comm, tsk->comm, sizeof(comm)));
+
+					audit_log_format(ab, " uid=%u",
+					from_kuid(&init_user_ns,
+						current_cred()->uid));
 			}
 		}
 		break;
@@ -321,6 +329,7 @@ static void dump_common_audit_data(struct audit_buffer *ab,
 		if (a->u.net->sk) {
 			struct sock *sk = a->u.net->sk;
 			struct unix_sock *u;
+			struct unix_address *addr;
 			int len = 0;
 			char *p = NULL;
 
@@ -351,14 +360,15 @@ static void dump_common_audit_data(struct audit_buffer *ab,
 #endif
 			case AF_UNIX:
 				u = unix_sk(sk);
+				addr = smp_load_acquire(&u->addr);
+				if (!addr)
+					break;
 				if (u->path.dentry) {
 					audit_log_d_path(ab, " path=", &u->path);
 					break;
 				}
-				if (!u->addr)
-					break;
-				len = u->addr->len-sizeof(short);
-				p = &u->addr->name->sun_path[0];
+				len = addr->len-sizeof(short);
+				p = &addr->name->sun_path[0];
 				audit_log_format(ab, " path=");
 				if (*p)
 					audit_log_untrustedstring(ab, p);
