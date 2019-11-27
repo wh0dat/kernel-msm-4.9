@@ -280,6 +280,147 @@ static int notrace persistent_ram_update_user(struct persistent_ram_zone *prz,
 	return ret;
 }
 
+#ifdef CONFIG_PSTORE_RAM_ANNOTATION_APPEND
+struct praa_buf {
+	struct list_head list;
+	int size, space;
+	char data[];
+};
+
+struct persistent_ram_annotation_append_buffer {
+	spinlock_t lock;	/* protect list and buf */
+	struct list_head list;
+	struct praa_buf *buf;
+	int total_size;
+	int stop;
+} praa_buffer = {
+	.lock	= __SPIN_LOCK_UNLOCKED(praa_buffer.lock),
+	.list	= LIST_HEAD_INIT(praa_buffer.list),
+	.stop = 0,
+	.buf = NULL,
+	.total_size = 0,
+};
+
+int persistent_ram_annotation_append(const char *fmt, ...)
+{
+	va_list args;
+	unsigned long flags;
+	int len = 0;
+	char line_buf[512];
+	struct praa_buf *buf;
+
+	va_start(args, fmt);
+	len += vsnprintf(line_buf + len, sizeof(line_buf) - len, fmt, args);
+	va_end(args);
+
+	spin_lock_irqsave(&praa_buffer.lock, flags);
+	if (praa_buffer.stop) {
+		spin_unlock_irqrestore(&praa_buffer.lock, flags);
+		pr_err("%s() called too late by %pf()\n", __func__,
+				__builtin_return_address(0));
+		return 0;
+	}
+
+	while (1) {
+		if (!praa_buffer.buf) {
+			buf = (struct praa_buf *) __get_free_page(GFP_ATOMIC);
+			if (buf) {
+				buf->size = 0;
+				buf->space = PAGE_SIZE - 1 -
+					offsetof(struct praa_buf, data);
+				praa_buffer.buf = buf;
+			} else {
+				pr_err("%s NOMEM\n", __func__);
+				len = 0;
+				break;
+			}
+		}
+		buf = praa_buffer.buf;
+		if (len + 1 > buf->space) {
+			buf->data[buf->size] = '\0';
+			list_add_tail(&buf->list, &praa_buffer.list);
+			praa_buffer.total_size += buf->size;
+			praa_buffer.buf = NULL;
+			continue;
+		}
+		memcpy(&buf->data[buf->size], line_buf, len);
+		buf->space -= len;
+		buf->size += len;
+		break;
+	}
+	spin_unlock_irqrestore(&praa_buffer.lock, flags);
+	return len;
+}
+
+static int persistent_ram_annotation_append_stop(void)
+{
+	int ret;
+	unsigned long flags;
+	struct praa_buf *buf;
+	spin_lock_irqsave(&praa_buffer.lock, flags);
+	if (praa_buffer.stop) {
+		spin_unlock_irqrestore(&praa_buffer.lock, flags);
+		return 0;
+	}
+	praa_buffer.stop = 1;
+	if (praa_buffer.buf) {
+		buf = praa_buffer.buf;
+		praa_buffer.buf = NULL;
+		buf->data[buf->size] = '\0';
+		list_add_tail(&buf->list, &praa_buffer.list);
+		praa_buffer.total_size += buf->size;
+	}
+	ret = praa_buffer.total_size;
+	spin_unlock_irqrestore(&praa_buffer.lock, flags);
+	return ret;
+}
+
+static void persistent_ram_annotation_append_push(char *ptr)
+{
+	unsigned long flags;
+	struct praa_buf *buf, *n;
+
+	spin_lock_irqsave(&praa_buffer.lock, flags);
+	list_for_each_entry_safe(buf, n, &praa_buffer.list, list) {
+		if (ptr) {
+			memcpy(ptr, buf->data, buf->size);
+			ptr += buf->size;
+		}
+		list_del(&buf->list);
+		praa_buffer.total_size -= buf->size;
+		free_page((unsigned long)buf);
+	}
+	spin_unlock_irqrestore(&praa_buffer.lock, flags);
+}
+
+void persistent_ram_annotation_merge(struct persistent_ram_zone *prz)
+{
+	size_t ext_size;
+	char *old_log2;
+
+	ext_size = persistent_ram_annotation_append_stop();
+	if (ext_size) {
+		if (!prz) {
+			persistent_ram_annotation_append_push(NULL);
+			pr_info("%s: discarded %zu\n", __func__, ext_size);
+			return;
+		}
+		old_log2 = krealloc(prz->old_log,
+				prz->old_log_size + ext_size, GFP_KERNEL);
+		if (old_log2) {
+			persistent_ram_annotation_append_push(old_log2 +
+				prz->old_log_size);
+			prz->old_log = old_log2;
+			prz->old_log_size += ext_size;
+			pr_info("%s: merged %zu\n", __func__, ext_size);
+		} else {
+			pr_err("%s: cannot merge %zu\n", __func__, ext_size);
+			persistent_ram_annotation_append_push(NULL);
+		}
+	}
+}
+#endif
+
 void persistent_ram_save_old(struct persistent_ram_zone *prz)
 {
 	struct persistent_ram_buffer *buffer = prz->buffer;
@@ -421,7 +562,12 @@ static void *persistent_ram_vmap(phys_addr_t start, size_t size,
 	vaddr = vmap(pages, page_count, VM_MAP, prot);
 	kfree(pages);
 
-	return vaddr;
+	/*
+	 * Since vmap() uses page granularity, we must add the offset
+	 * into the page here, to get the byte granularity address
+	 * into the mapping to represent the actual "start" location.
+	 */
+	return vaddr + offset_in_page(start);
 }
 
 static void *persistent_ram_iomap(phys_addr_t start, size_t size,
@@ -440,6 +586,11 @@ static void *persistent_ram_iomap(phys_addr_t start, size_t size,
 	else
 		va = ioremap_wc(start, size);
 
+	/*
+	 * Since request_mem_region() and ioremap() are byte-granularity
+	 * there is no need handle anything special like we do when the
+	 * vmap() case in persistent_ram_vmap() above.
+	 */
 	return va;
 }
 
@@ -460,8 +611,10 @@ static int persistent_ram_buffer_map(phys_addr_t start, phys_addr_t size,
 		return -ENOMEM;
 	}
 
-	prz->buffer = prz->vaddr + offset_in_page(start);
+	prz->buffer = prz->vaddr;
 	prz->buffer_size = size - sizeof(struct persistent_ram_buffer);
+	pr_info("persistent_ram: paddr: %p, vaddr: %p, buf size = 0x%zx\n",
+		(void *)prz->paddr, (void *)prz->vaddr, prz->buffer_size);
 
 	return 0;
 }
@@ -478,6 +631,11 @@ static int persistent_ram_post_init(struct persistent_ram_zone *prz, u32 sig,
 	sig ^= PERSISTENT_RAM_SIG;
 
 	if (prz->buffer->sig == sig) {
+		if (buffer_size(prz) == 0) {
+			pr_debug("found existing empty buffer\n");
+			return 0;
+		}
+
 		if (buffer_size(prz) > prz->buffer_size ||
 		    buffer_start(prz) > buffer_size(prz))
 			pr_info("found existing invalid buffer, size %zu, start %zu\n",
@@ -507,7 +665,8 @@ void persistent_ram_free(struct persistent_ram_zone *prz)
 
 	if (prz->vaddr) {
 		if (pfn_valid(prz->paddr >> PAGE_SHIFT)) {
-			vunmap(prz->vaddr);
+			/* We must vunmap() at page-granularity. */
+			vunmap(prz->vaddr - offset_in_page(prz->paddr));
 		} else {
 			iounmap(prz->vaddr);
 			release_mem_region(prz->paddr, prz->size);

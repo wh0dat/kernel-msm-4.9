@@ -36,7 +36,6 @@
 #include <linux/slab.h>
 #include <linux/spinlock.h>
 #include <linux/uaccess.h>
-#include <linux/syslog.h>
 
 #include "internal.h"
 
@@ -121,18 +120,6 @@ static const struct seq_operations pstore_ftrace_seq_ops = {
 	.show	= pstore_ftrace_seq_show,
 };
 
-static int pstore_check_syslog_permissions(struct pstore_private *ps)
-{
-	switch (ps->type) {
-	case PSTORE_TYPE_DMESG:
-	case PSTORE_TYPE_CONSOLE:
-		return check_syslog_permissions(SYSLOG_ACTION_READ_ALL,
-			SYSLOG_FROM_READER);
-	default:
-		return 0;
-	}
-}
-
 static ssize_t pstore_file_read(struct file *file, char __user *userbuf,
 						size_t count, loff_t *ppos)
 {
@@ -144,16 +131,49 @@ static ssize_t pstore_file_read(struct file *file, char __user *userbuf,
 	return simple_read_from_buffer(userbuf, count, ppos, ps->data, ps->size);
 }
 
+#define PSTORE_ANNOTATE_MAX_SIZE 0x100
+static ssize_t pstore_file_write(struct file *file, const char __user *userbuf,
+						 size_t count, loff_t *ppos)
+{
+	struct seq_file *sf = file->private_data;
+	struct pstore_private *ps = sf->private;
+	char *buffer;
+	ssize_t ret = 0;
+	ssize_t saved_count = count;
+
+	if (!count || !userbuf)
+		return 0;
+
+	if (ps->type != PSTORE_TYPE_ANNOTATE)
+		return count;
+
+	if (count > PSTORE_ANNOTATE_MAX_SIZE)
+		count = PSTORE_ANNOTATE_MAX_SIZE;
+
+	buffer = kmalloc(count + 1, GFP_KERNEL);
+	if (!buffer)
+		return -ENOMEM;
+
+	if (copy_from_user(buffer, userbuf, count)) {
+		ret = -EFAULT;
+		goto write_out;
+	}
+
+	buffer[count] = '\0';
+	pstore_annotate(buffer);
+	ret = saved_count;
+
+write_out:
+	kfree(buffer);
+	return ret;
+}
+
 static int pstore_file_open(struct inode *inode, struct file *file)
 {
 	struct pstore_private *ps = inode->i_private;
 	struct seq_file *sf;
 	int err;
 	const struct seq_operations *sops = NULL;
-
-	err = pstore_check_syslog_permissions(ps);
-	if (err)
-		return err;
 
 	if (ps->type == PSTORE_TYPE_FTRACE)
 		sops = &pstore_ftrace_seq_ops;
@@ -180,6 +200,7 @@ static loff_t pstore_file_llseek(struct file *file, loff_t off, int whence)
 static const struct file_operations pstore_file_operations = {
 	.open		= pstore_file_open,
 	.read		= pstore_file_read,
+	.write		= pstore_file_write,
 	.llseek		= pstore_file_llseek,
 	.release	= seq_release,
 };
@@ -191,11 +212,6 @@ static const struct file_operations pstore_file_operations = {
 static int pstore_unlink(struct inode *dir, struct dentry *dentry)
 {
 	struct pstore_private *p = d_inode(dentry)->i_private;
-	int err;
-
-	err = pstore_check_syslog_permissions(p);
-	if (err)
-		return err;
 
 	if (p->psi->erase)
 		p->psi->erase(p->type, p->id, p->count,
@@ -342,10 +358,10 @@ int pstore_mkfile(enum pstore_type_id type, char *psname, u64 id, int count,
 			  psname, id, compressed ? ".enc.z" : "");
 		break;
 	case PSTORE_TYPE_CONSOLE:
-		scnprintf(name, sizeof(name), "console-%s-%lld", psname, id);
+		scnprintf(name, sizeof(name), "console-%s", psname);
 		break;
 	case PSTORE_TYPE_FTRACE:
-		scnprintf(name, sizeof(name), "ftrace-%s-%lld", psname, id);
+		scnprintf(name, sizeof(name), "ftrace-%s", psname);
 		break;
 	case PSTORE_TYPE_MCE:
 		scnprintf(name, sizeof(name), "mce-%s-%lld", psname, id);
@@ -366,6 +382,9 @@ int pstore_mkfile(enum pstore_type_id type, char *psname, u64 id, int count,
 		break;
 	case PSTORE_TYPE_PPC_OPAL:
 		sprintf(name, "powerpc-opal-%s-%lld", psname, id);
+		break;
+	case PSTORE_TYPE_ANNOTATE:
+		scnprintf(name, sizeof(name), "annotate-%s-%lld", psname, id);
 		break;
 	case PSTORE_TYPE_UNKNOWN:
 		scnprintf(name, sizeof(name), "unknown-%s-%lld", psname, id);
@@ -429,7 +448,7 @@ static int pstore_fill_super(struct super_block *sb, void *data, int silent)
 
 	inode = pstore_get_inode(sb);
 	if (inode) {
-		inode->i_mode = S_IFDIR | 0755;
+		inode->i_mode = S_IFDIR | 0750;
 		inode->i_op = &pstore_dir_inode_operations;
 		inode->i_fop = &simple_dir_operations;
 		inc_nlink(inode);

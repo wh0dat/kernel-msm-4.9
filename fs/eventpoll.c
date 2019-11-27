@@ -1041,7 +1041,7 @@ static int ep_poll_callback(wait_queue_t *wait, unsigned mode, int sync, void *k
 	 * semantics). All the events that happen during that period of time are
 	 * chained in ep->ovflist and requeued later on.
 	 */
-	if (unlikely(ep->ovflist != EP_UNACTIVE_PTR)) {
+	if (ep->ovflist != EP_UNACTIVE_PTR) {
 		if (epi->next == EP_UNACTIVE_PTR) {
 			epi->next = ep->ovflist;
 			ep->ovflist = epi;
@@ -1267,7 +1267,14 @@ static int ep_create_wakeup_source(struct epitem *epi)
 	struct wakeup_source *ws;
 
 	if (!epi->ep->ws) {
+#ifdef CONFIG_FS_EPOLL_WAKEUP_DEBUG
+		char full_ep_name[64];
+		snprintf(full_ep_name, 64, "eventpoll-%s-%d",
+			current->comm, current->pid);
+		epi->ep->ws = wakeup_source_register(full_ep_name);
+#else
 		epi->ep->ws = wakeup_source_register("eventpoll");
+#endif
 		if (!epi->ep->ws)
 			return -ENOMEM;
 	}

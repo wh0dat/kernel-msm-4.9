@@ -39,6 +39,9 @@
 #include <asm/uaccess.h>
 #include <asm/param.h>
 #include <asm/page.h>
+#ifdef CONFIG_COREDUMP_GZ
+#include "coredump_gz.h"
+#endif
 
 #ifndef user_long_t
 #define user_long_t long
@@ -1217,9 +1220,8 @@ static int load_elf_library(struct file *file)
 		goto out_free_ph;
 	}
 
-	len = ELF_PAGESTART(eppnt->p_filesz + eppnt->p_vaddr +
-			    ELF_MIN_ALIGN - 1);
-	bss = eppnt->p_memsz + eppnt->p_vaddr;
+	len = ELF_PAGEALIGN(eppnt->p_filesz + eppnt->p_vaddr);
+	bss = ELF_PAGEALIGN(eppnt->p_memsz + eppnt->p_vaddr);
 	if (bss > len) {
 		error = vm_brk(len, bss - len);
 		if (error)
@@ -1707,7 +1709,7 @@ static int fill_thread_core_info(struct elf_thread_core_info *t,
 		const struct user_regset *regset = &view->regsets[i];
 		do_thread_regset_writeback(t->task, regset);
 		if (regset->core_note_type && regset->get &&
-		    (!regset->active || regset->active(t->task, regset))) {
+		    (!regset->active || regset->active(t->task, regset) > 0)) {
 			int ret;
 			size_t size = regset->n * regset->size;
 			void *data = kmalloc(size, GFP_KERNEL);
@@ -2180,6 +2182,7 @@ static int elf_core_dump(struct coredump_params *cprm)
 	Elf_Half e_phnum;
 	elf_addr_t e_shoff;
 	elf_addr_t *vma_filesz = NULL;
+	int page_padding_num;
 
 	/*
 	 * We no longer stop all VM operations.
@@ -2227,6 +2230,9 @@ static int elf_core_dump(struct coredump_params *cprm)
 
 	fs = get_fs();
 	set_fs(KERNEL_DS);
+
+	if (!dump_init(cprm))
+		goto end_coredump;
 
 	offset += sizeof(*elf);				/* Elf header */
 	offset += segs * sizeof(struct elf_phdr);	/* Program headers */
@@ -2313,7 +2319,13 @@ static int elf_core_dump(struct coredump_params *cprm)
 		goto end_coredump;
 
 	/* Align to page */
-	if (!dump_skip(cprm, dataoff - cprm->pos))
+	page_padding_num = dataoff - cprm->pos;
+#ifdef CONFIG_COREDUMP_GZ
+	/* For compressing in kernel, re-write the padding zero nums */
+	if (dump_compressed(cprm))
+		page_padding_num = dataoff - cprm->zstr.total_in;
+#endif
+	if (!dump_skip(cprm, page_padding_num))
 		goto end_coredump;
 
 	for (i = 0, vma = first_vma(current, gate_vma); vma != NULL;
@@ -2350,6 +2362,7 @@ static int elf_core_dump(struct coredump_params *cprm)
 	}
 
 end_coredump:
+	dump_finish(cprm);
 	set_fs(fs);
 
 cleanup:
