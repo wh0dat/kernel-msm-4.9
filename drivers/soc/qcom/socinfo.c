@@ -602,8 +602,8 @@ static struct msm_soc_info cpu_of_id[] = {
 	/* SDM710 ID */
 	[360] = {MSM_CPU_SDM710, "SDM710"},
 
-	/* SDMNOBELIUM ID */
-	[393] = {MSM_CPU_SDMNOBELIUM, "SDMNOBELIUM"},
+	/* SDM712 ID */
+	[393] = {MSM_CPU_SDM712, "SDM712"},
 
 	/* SXR1120 ID */
 	[370] = {MSM_CPU_SXR1120, "SXR1120"},
@@ -672,6 +672,7 @@ uint32_t socinfo_get_version(void)
 {
 	return (socinfo) ? socinfo->v0_1.version : 0;
 }
+EXPORT_SYMBOL(socinfo_get_version);
 
 char *socinfo_get_build_id(void)
 {
@@ -758,6 +759,7 @@ uint32_t socinfo_get_raw_id(void)
 			socinfo->v0_2.raw_id : 0)
 		: 0;
 }
+EXPORT_SYMBOL_GPL(socinfo_get_raw_id);
 
 uint32_t socinfo_get_raw_version(void)
 {
@@ -766,6 +768,7 @@ uint32_t socinfo_get_raw_version(void)
 			socinfo->v0_2.raw_version : 0)
 		: 0;
 }
+EXPORT_SYMBOL_GPL(socinfo_get_raw_version);
 
 uint32_t socinfo_get_platform_type(void)
 {
@@ -774,7 +777,7 @@ uint32_t socinfo_get_platform_type(void)
 			socinfo->v0_3.hw_platform : 0)
 		: 0;
 }
-
+EXPORT_SYMBOL_GPL(socinfo_get_platform_type);
 
 uint32_t socinfo_get_platform_version(void)
 {
@@ -783,6 +786,7 @@ uint32_t socinfo_get_platform_version(void)
 			socinfo->v0_4.platform_version : 0)
 		: 0;
 }
+EXPORT_SYMBOL_GPL(socinfo_get_platform_version);
 
 /* This information is directly encoded by the machine id */
 /* Thus no external callers rely on this information at the moment */
@@ -801,6 +805,7 @@ uint32_t socinfo_get_platform_subtype(void)
 			socinfo->v0_6.hw_platform_subtype : 0)
 		: 0;
 }
+EXPORT_SYMBOL_GPL(socinfo_get_platform_subtype);
 
 static uint32_t socinfo_get_foundry_id(void)
 {
@@ -1560,9 +1565,9 @@ static void * __init setup_dummy_socinfo(void)
 		dummy_socinfo.id = 360;
 		strlcpy(dummy_socinfo.build_id, "sdm710 - ",
 			sizeof(dummy_socinfo.build_id));
-	} else if (early_machine_is_sdmnobelium()) {
+	} else if (early_machine_is_sdm712()) {
 		dummy_socinfo.id = 393;
-		strlcpy(dummy_socinfo.build_id, "sdmnobelium - ",
+		strlcpy(dummy_socinfo.build_id, "sdm712 - ",
 			sizeof(dummy_socinfo.build_id));
 	} else if (early_machine_is_sda670()) {
 		dummy_socinfo.id = 337;
