@@ -116,7 +116,6 @@ void wakeup_source_drop(struct wakeup_source *ws)
 	if (!ws)
 		return;
 
-	del_timer_sync(&ws->timer);
 	__pm_relax(ws);
 }
 EXPORT_SYMBOL_GPL(wakeup_source_drop);
@@ -204,6 +203,13 @@ void wakeup_source_remove(struct wakeup_source *ws)
 	list_del_rcu(&ws->entry);
 	spin_unlock_irqrestore(&events_lock, flags);
 	synchronize_srcu(&wakeup_srcu);
+
+	del_timer_sync(&ws->timer);
+	/*
+	 * Clear timer.function to make wakeup_source_not_registered() treat
+	 * this wakeup source as not registered.
+	 */
+	ws->timer.function = NULL;
 }
 EXPORT_SYMBOL_GPL(wakeup_source_remove);
 
@@ -1093,6 +1099,33 @@ static int wakeup_sources_stats_show(struct seq_file *m, void *unused)
 	print_wakeup_source_stats(m, &deleted_ws);
 
 	return 0;
+}
+
+int wakelock_dump_active_info(char *buf, int size)
+{
+	struct wakeup_source *ws;
+	unsigned long flags;
+	char *p = buf;
+
+	rcu_read_lock();
+	list_for_each_entry_rcu(ws, &wakeup_sources, entry) {
+		spin_lock_irqsave(&ws->lock, flags);
+		if (ws->active) {
+			if (time_after(ws->timer_expires, jiffies)) {
+				long timeout = ws->timer_expires - jiffies;
+
+				p += snprintf(p, size - (p - buf),
+				"   (active)[%s], time left %d (msecs)\n",
+				ws->name, jiffies_to_msecs(timeout));
+			} else /* active */
+				p += snprintf(p, size - (p - buf),
+				"   (active)[%s]\n", ws->name);
+		}
+		spin_unlock_irqrestore(&ws->lock, flags);
+	}
+	rcu_read_unlock();
+
+	return p - buf;
 }
 
 static int wakeup_sources_stats_open(struct inode *inode, struct file *file)
