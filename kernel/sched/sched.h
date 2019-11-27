@@ -2,8 +2,10 @@
 #include <linux/sched.h>
 #include <linux/sched/sysctl.h>
 #include <linux/sched/rt.h>
+#include <linux/sched/smt.h>
 #include <linux/u64_stats_sync.h>
 #include <linux/sched/deadline.h>
+#include <linux/kernel_stat.h>
 #include <linux/binfmts.h>
 #include <linux/mutex.h>
 #include <linux/spinlock.h>
@@ -322,6 +324,8 @@ struct cfs_bandwidth {
 	/* statistics */
 	int nr_periods, nr_throttled;
 	u64 throttled_time;
+
+	bool distribute_running;
 #endif
 };
 
@@ -1229,7 +1233,7 @@ static __always_inline bool static_branch_##name(struct static_key *key) \
 extern struct static_key sched_feat_keys[__SCHED_FEAT_NR];
 #define sched_feat(x) (static_branch_##x(&sched_feat_keys[__SCHED_FEAT_##x]))
 #else /* !(SCHED_DEBUG && HAVE_JUMP_LABEL) */
-#define sched_feat(x) (sysctl_sched_features & (1UL << __SCHED_FEAT_##x))
+#define sched_feat(x) !!(sysctl_sched_features & (1UL << __SCHED_FEAT_##x))
 #endif /* SCHED_DEBUG && HAVE_JUMP_LABEL */
 
 extern struct static_key_false sched_numa_balancing;
@@ -2210,14 +2214,19 @@ static inline void nohz_balance_exit_idle(unsigned int cpu) { }
 
 #ifdef CONFIG_IRQ_TIME_ACCOUNTING
 struct irqtime {
-	u64			hardirq_time;
-	u64			softirq_time;
+	u64			total;
+	u64			tick_delta;
 	u64			irq_start_time;
 	struct u64_stats_sync	sync;
 };
 
 DECLARE_PER_CPU(struct irqtime, cpu_irqtime);
 
+/*
+ * Returns the irqtime minus the softirq time computed by ksoftirqd.
+ * Otherwise ksoftirqd's sum_exec_runtime is substracted its own runtime
+ * and never move forward.
+ */
 static inline u64 irq_time_read(int cpu)
 {
 	struct irqtime *irqtime = &per_cpu(cpu_irqtime, cpu);
@@ -2226,7 +2235,7 @@ static inline u64 irq_time_read(int cpu)
 
 	do {
 		seq = __u64_stats_fetch_begin(&irqtime->sync);
-		total = irqtime->softirq_time + irqtime->hardirq_time;
+		total = irqtime->total;
 	} while (__u64_stats_fetch_retry(&irqtime->sync, seq));
 
 	return total;

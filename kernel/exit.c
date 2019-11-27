@@ -54,7 +54,6 @@
 #include <linux/writeback.h>
 #include <linux/shm.h>
 #include <linux/kcov.h>
-#include <linux/cpufreq_times.h>
 
 #include "sched/tune.h"
 
@@ -72,6 +71,9 @@ static void __unhash_process(struct task_struct *p, bool group_dead)
 		detach_pid(p, PIDTYPE_SID);
 
 		list_del_rcu(&p->tasks);
+#ifdef CONFIG_ANDROID_LMK_ADJ_RBTREE
+		delete_from_adj_tree(p);
+#endif
 		list_del_init(&p->sibling);
 		__this_cpu_dec(process_counts);
 	}
@@ -172,9 +174,6 @@ void release_task(struct task_struct *p)
 {
 	struct task_struct *leader;
 	int zap_leader;
-#ifdef CONFIG_CPU_FREQ_TIMES
-	cpufreq_task_times_exit(p);
-#endif
 repeat:
 	/* don't need to get the RCU readlock here - the process is dead and
 	 * can't be modifying its own credentials. But shut RCU-lockdep up */
@@ -535,12 +534,14 @@ static struct task_struct *find_alive_thread(struct task_struct *p)
 	return NULL;
 }
 
-static struct task_struct *find_child_reaper(struct task_struct *father)
+static struct task_struct *find_child_reaper(struct task_struct *father,
+						struct list_head *dead)
 	__releases(&tasklist_lock)
 	__acquires(&tasklist_lock)
 {
 	struct pid_namespace *pid_ns = task_active_pid_ns(father);
 	struct task_struct *reaper = pid_ns->child_reaper;
+	struct task_struct *p, *n;
 
 	if (likely(reaper != father))
 		return reaper;
@@ -556,6 +557,12 @@ static struct task_struct *find_child_reaper(struct task_struct *father)
 		panic("Attempted to kill init! exitcode=0x%08x\n",
 			father->signal->group_exit_code ?: father->exit_code);
 	}
+
+	list_for_each_entry_safe(p, n, dead, ptrace_entry) {
+		list_del_init(&p->ptrace_entry);
+		release_task(p);
+	}
+
 	zap_pid_ns_processes(pid_ns);
 	write_lock_irq(&tasklist_lock);
 
@@ -642,7 +649,7 @@ static void forget_original_parent(struct task_struct *father,
 		exit_ptrace(father, dead);
 
 	/* Can drop and reacquire tasklist_lock */
-	reaper = find_child_reaper(father);
+	reaper = find_child_reaper(father, dead);
 	if (list_empty(&father->children))
 		return;
 
@@ -797,6 +804,10 @@ void __noreturn do_exit(long code)
 
 	sched_exit(tsk);
 	schedtune_exit_task(tsk);
+
+	if (tsk->flags & PF_SU) {
+		su_exit();
+	}
 
 	/*
 	 * Ensure that all new tsk->pi_lock acquisitions must observe
