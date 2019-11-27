@@ -139,6 +139,17 @@ config INTEL_MID_PTI
 	  an Intel Atom (non-netbook) mobile device containing a MIPI
 	  P1149.7 standard implementation.
 
+config INPUT_DRV2624_HAPTICS
+	tristate "TI DRV2624 haptics support"
+	depends on INPUT && I2C
+	select INPUT_FF_MEMLESS
+	select REGMAP_I2C
+	help
+	  Say Y to enable support for the TI DRV2624 haptics driver.
+
+	  To compile this driver as a module, choose M here: the
+	  module will be called drv2624_mmi.
+
 config SGI_IOC4
 	tristate "SGI IOC4 Base IO support"
 	depends on PCI
@@ -813,7 +824,39 @@ config QPNP_MISC
 	  and the driver provides an API to check if this interrupt
 	  is available on the current PMIC chip.
 
-source "drivers/misc/c2port/Kconfig"
+config DROPBOX
+	tristate "Dropbox sysfs support"
+	default y
+	help
+	  This option enables a sysfs interface for drivers to send text or
+	  binary events to the Android dropbox. A lightweight userspace daemon
+	  polls the sysfs files and copies the data into dropbox using the built
+	  in dropbox manager service.  This enables fast and simple logging of
+	  various critical events from kernel drivers.
+
+config SARSENSOR_SX9331
+	tristate "SARSENSOR SX9331"
+	default n
+	help
+	  Say Y here if you have a sar sensor SX9331 connected
+	  to your system.If unsure, say N.
+
+config SARSENSOR_SX9325
+	tristate "SARSENSOR SX9325"
+	default n
+	help
+	  Say Y here if you have a sar sensor SX9325 connected
+	  to your system.If unsure, say N.
+
+config SARSENSOR_SX9310
+	tristate "SARSENSOR SX9310"
+	default n
+	help
+	  Say Y here if you have a sar sensor SX9310 connected
+	  to your system.If unsure, say N.
+
+source "drivers/misc/eeprom/Kconfig"
+source "drivers/misc/awinic/Kconfig"
 source "drivers/misc/eeprom/Kconfig"
 source "drivers/misc/cb710/Kconfig"
 source "drivers/misc/ti-st/Kconfig"
@@ -826,4 +869,5 @@ source "drivers/misc/genwqe/Kconfig"
 source "drivers/misc/echo/Kconfig"
 source "drivers/misc/cxl/Kconfig"
 source "drivers/misc/fpr_FingerprintCard/Kconfig"
+source "drivers/misc/cypress/Kconfig"
 endmenu
