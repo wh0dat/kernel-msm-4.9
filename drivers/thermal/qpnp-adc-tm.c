@@ -2720,16 +2720,13 @@ static irqreturn_t qpnp_adc_tm_rc_thr_isr(int irq, void *data)
 	}
 
 	if (sensor_low_notify_num) {
-		pm_wakeup_event(chip->dev,
-				QPNP_ADC_WAKEUP_SRC_TIMEOUT_MS);
+		pm_wakeup_event(chip->dev, 2000);
 		queue_work(chip->low_thr_wq, &chip->trigger_low_thr_work);
 	}
 
 	if (sensor_high_notify_num) {
-		pm_wakeup_event(chip->dev,
-				QPNP_ADC_WAKEUP_SRC_TIMEOUT_MS);
-		queue_work(chip->high_thr_wq,
-				&chip->trigger_high_thr_work);
+		pm_wakeup_event(chip->dev, 2000);
+		queue_work(chip->high_thr_wq, &chip->trigger_high_thr_work);
 	}
 
 	return IRQ_HANDLED;

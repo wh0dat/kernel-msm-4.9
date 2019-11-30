@@ -1,4 +1,5 @@
-/* Copyright (c) 2018, The Linux Foundation. All rights reserved.
+/*
+ * Copyright (c) 2019, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -10,8 +11,14 @@
  * GNU General Public License for more details.
  */
 
-&mdss_mdp {
-	mot_djn_568_hd_vid_v0: qcom,mdss_dsi_mot_djn_568_hd_vid_v0 {
-		#include "dsi-panel-mot-djn-568-hd-vid-common.dtsi"
-	};
+/dts-v1/;
+
+#include "qm215.dtsi"
+#include "qm215-pm8916.dtsi"
+#include "qm215-qrd-smb1360.dtsi"
+
+/ {
+	model = "Qualcomm Technologies, Inc. qm215 SMB1360 QRD";
+	compatible = "qcom,qm215-qrd", "qcom,qm215", "qcom,qrd";
+	qcom,board-id = <0x0b 5>;
 };

@@ -21,6 +21,8 @@
 /* packet opcode types */
 #define CAM_ICP_OPCODE_IPE_UPDATE 0
 #define CAM_ICP_OPCODE_BPS_UPDATE 1
+#define CAM_ICP_OPCODE_IPE_SETTINGS 2
+#define CAM_ICP_OPCODE_BPS_SETTINGS 3
 
 /* IPE input port resource type */
 #define CAM_ICP_IPE_INPUT_IMAGE_FULL            0x0

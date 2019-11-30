@@ -849,7 +849,6 @@ static int pil_load_seg(struct pil_desc *desc, struct pil_seg *seg)
 		if (fw->size != seg->filesz) {
 			pil_err(desc, "Blob size %u doesn't match %lu\n",
 					ret, seg->filesz);
-			release_firmware(fw);
 			return -EPERM;
 		}
 
@@ -883,6 +882,7 @@ static int pil_load_seg(struct pil_desc *desc, struct pil_seg *seg)
 			pil_err(desc, "Blob%u failed verification(rc:%d)\n",
 								num, ret);
 	}
+
 	return ret;
 }
 

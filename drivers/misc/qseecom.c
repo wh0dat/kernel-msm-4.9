@@ -3276,6 +3276,7 @@ exit:
 		pr_err("cache operation failed %d\n", ret2);
 		return ret2;
 	}
+	__qseecom_processing_pending_lsnr_unregister();
 	return ret;
 }
 

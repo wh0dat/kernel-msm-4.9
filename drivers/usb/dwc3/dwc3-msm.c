@@ -3857,6 +3857,7 @@ static int dwc3_msm_remove(struct platform_device *pdev)
 
 	if (mdwc->hs_phy)
 		mdwc->hs_phy->flags &= ~PHY_HOST_MODE;
+
 	platform_device_put(mdwc->dwc3);
 	if (mdwc->ss_compliance) {
 		device_remove_file(&pdev->dev, &dev_attr_enable_ss_compliance);

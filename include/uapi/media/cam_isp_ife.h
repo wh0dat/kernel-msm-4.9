@@ -30,8 +30,7 @@
 #define CAM_ISP_IFE_OUT_RES_RDI_RD             (CAM_ISP_IFE_OUT_RES_BASE + 23)
 #define CAM_ISP_IFE_OUT_RES_MAX                (CAM_ISP_IFE_OUT_RES_BASE + 24)
 
-
-/* IFE input port resource type (global unique) */
+/*IFE input port resource type (global unique) */
 #define CAM_ISP_IFE_IN_RES_BASE                 0x4000
 
 #define CAM_ISP_IFE_IN_RES_TPG                 (CAM_ISP_IFE_IN_RES_BASE + 0)

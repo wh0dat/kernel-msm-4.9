@@ -2575,7 +2575,8 @@ static int try_set_ctrl(struct msm_vidc_inst *inst, struct v4l2_ctrl *ctrl)
 		} else {
 			dprintk(VIDC_DBG,
 				"inst(%pK) operating rate changed from %d to %d\n",
-				inst, inst->prop.operating_rate >> 16, ctrl->val >> 16);
+				inst, inst->prop.operating_rate >> 16,
+					ctrl->val >> 16);
 			inst->prop.operating_rate = ctrl->val;
 		}
 		break;

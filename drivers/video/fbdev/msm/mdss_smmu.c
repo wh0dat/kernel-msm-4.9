@@ -521,6 +521,8 @@ int mdss_smmu_fault_handler(struct iommu_domain *domain, struct device *dev,
 		    "dsi1_ctrl", "dsi1_phy", "vbif", "vbif_nrt",
 		    "dbg_bus", "vbif_dbg_bus",
 		    "dsi_dbg_bus");
+		MDSS_XLOG_TOUT_HANDLER("mdp", "vbif", "dsi0_ctrl",
+				"dsi0_phy");
 	}
 end:
 	return -ENODEV;

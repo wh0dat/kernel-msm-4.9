@@ -268,6 +268,7 @@ enum rq_flag_bits {
 #define REQ_PM			(1ULL << __REQ_PM)
 #define REQ_HASHED		(1ULL << __REQ_HASHED)
 #define REQ_MQ_INFLIGHT		(1ULL << __REQ_MQ_INFLIGHT)
+#define REQ_NOENCRYPT		(1ULL << __REQ_NOENCRYPT)
 
 enum req_op {
 	REQ_OP_READ,

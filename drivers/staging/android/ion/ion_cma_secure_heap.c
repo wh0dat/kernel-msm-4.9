@@ -346,8 +346,8 @@ static void ion_secure_cma_free_chunk(struct ion_cma_secure_heap *sheap,
 	kfree(chunk);
 }
 
-static unsigned long __ion_secure_cma_shrink_pool(struct ion_cma_secure_heap *sheap,
-					 int max_nr)
+static unsigned long
+__ion_secure_cma_shrink_pool(struct ion_cma_secure_heap *sheap, int max_nr)
 {
 	struct list_head *entry, *_n;
 	unsigned long drained_size = 0, skipped_size = 0;

@@ -3282,7 +3282,7 @@ static int sdhci_get_data_err(struct sdhci_host *host, u32 intmask)
 	} else if (intmask & (SDHCI_INT_DATA_END_BIT | SDHCI_INT_DATA_CRC)) {
 		host->mmc->err_stats[MMC_ERR_DAT_CRC]++;
 		return -EILSEQ;
-	} else if (intmask & MMC_ERR_ADMA) {
+	} else if (intmask & SDHCI_INT_ADMA_ERROR) {
 		host->mmc->err_stats[MMC_ERR_ADMA]++;
 		return -EIO;
 	}
@@ -3428,7 +3428,7 @@ static irqreturn_t sdhci_irq(int irq, void *dev_id)
 			if ((host->quirks2 & SDHCI_QUIRK2_SLOW_INT_CLR) &&
 				(host->clock <= 400000))
 				udelay(40);
-			sdhci_cmd_irq(host, intmask & SDHCI_INT_CMD_MASK, &intmask);
+			sdhci_cmd_irq(host, intmask & SDHCI_INT_CMD_MASK);
 		}
 
 		if (intmask & SDHCI_INT_DATA_MASK) {

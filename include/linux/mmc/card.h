@@ -142,8 +142,6 @@ struct mmc_ext_csd {
 	u8			barrier_en;
 
 	u8			fw_version;		/* 254 */
-#define MMC_DEVICE_VERSION_LEN 2
-	u8			device_version[MMC_FIRMWARE_LEN];  /* 262, device version */
 	unsigned int            feature_support;
 #define MMC_DISCARD_FEATURE	BIT(0)                  /* CMD38 feature */
 };
@@ -163,8 +161,6 @@ struct sd_ssr {
 	unsigned int		au;			/* In sectors */
 	unsigned int		erase_timeout;		/* In milliseconds */
 	unsigned int		erase_offset;		/* In milliseconds */
-	unsigned int		speed_class;
-	unsigned int		uhs_speed_grade;
 };
 
 struct sd_switch_caps {

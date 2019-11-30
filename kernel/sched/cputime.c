@@ -77,11 +77,13 @@ void irqtime_account_irq(struct task_struct *curr)
 	 * that do not consume any time, but still wants to run.
 	 */
 	if (hardirq_count())
-		irqtime_account_delta(irqtime, delta, CPUTIME_IRQ);
+		irqtime->hardirq_time += delta;
 	else if (in_serving_softirq() && curr != this_cpu_ksoftirqd())
-		irqtime_account_delta(irqtime, delta, CPUTIME_SOFTIRQ);
+		irqtime->softirq_time += delta;
 	else
 		account = false;
+
+	u64_stats_update_end(&irqtime->sync);
 
 	if (account)
 		sched_account_irqtime(cpu, curr, delta, wallclock);
@@ -92,14 +94,21 @@ EXPORT_SYMBOL_GPL(irqtime_account_irq);
 
 static cputime_t irqtime_tick_accounted(cputime_t maxtime)
 {
-	struct irqtime *irqtime = this_cpu_ptr(&cpu_irqtime);
-	cputime_t delta;
+	u64 *cpustat = kcpustat_this_cpu->cpustat;
+	u64 base = cpustat[idx];
+	cputime_t irq_cputime;
 
-	delta = nsecs_to_cputime(irqtime->tick_delta);
-	delta = min(delta, maxtime);
-	irqtime->tick_delta -= cputime_to_nsecs(delta);
+	if (idx == CPUTIME_SOFTIRQ)
+		base = kcpustat_this_cpu->softirq_no_ksoftirqd;
 
-	return delta;
+	irq_cputime = nsecs_to_cputime64(irqtime) - base;
+	irq_cputime = min(irq_cputime, maxtime);
+	cpustat[idx] += cputime_to_nsecs(irq_cputime);
+
+	if (idx == CPUTIME_SOFTIRQ)
+		kcpustat_this_cpu->softirq_no_ksoftirqd += irq_cputime;
+
+	return irq_cputime;
 }
 
 #else /* CONFIG_IRQ_TIME_ACCOUNTING */
