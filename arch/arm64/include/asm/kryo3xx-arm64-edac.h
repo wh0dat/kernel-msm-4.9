@@ -1,5 +1,4 @@
-/*
- * Copyright (c) 2016-2018, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2016, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -11,15 +10,13 @@
  * GNU General Public License for more details.
  */
 
-#ifndef ASMARM_DMA_CONTIGUOUS_H
-#define ASMARM_DMA_CONTIGUOUS_H
+#ifndef ASM_KRYO3xx_EDAC_H
+#define ASM_KRYO3xx_EDAC_H
 
-#ifdef __KERNEL__
-
-#include <linux/types.h>
-
-void dma_contiguous_early_fixup(phys_addr_t base, unsigned long size);
-
+#if defined(CONFIG_EDAC_KRYO3XX_ARM64)
+void kryo3xx_poll_cache_errors(void *info);
+#else
+static inline void kryo3xx_poll_cache_errors(void *info) { }
 #endif
 
 #endif

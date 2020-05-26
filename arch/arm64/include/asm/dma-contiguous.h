@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016-2018, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2013,2017-2018 The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -11,8 +11,8 @@
  * GNU General Public License for more details.
  */
 
-#ifndef ASMARM_DMA_CONTIGUOUS_H
-#define ASMARM_DMA_CONTIGUOUS_H
+#ifndef _ASM_DMA_CONTIGUOUS_H
+#define _ASM_DMA_CONTIGUOUS_H
 
 #ifdef __KERNEL__
 
@@ -21,5 +21,4 @@
 void dma_contiguous_early_fixup(phys_addr_t base, unsigned long size);
 
 #endif
-
 #endif
